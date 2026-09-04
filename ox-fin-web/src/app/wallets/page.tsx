@@ -2,11 +2,33 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { Wallet, Lock, Unlock, TrendingUp, Info, Zap, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
+import {
+    Wallet, Lock, Unlock, TrendingUp, Info, Zap,
+    ArrowUpRight, ArrowDownRight, Loader2, RefreshCw,
+} from 'lucide-react';
 import PhysicalCard from '@/components/ui/PhysicalCard';
 import OxCryptoConverter from '@/components/ui/OxCryptoConverter';
 import { calculateDailyInterest, calculateWalletLiteLimit, formatUSD } from '@/lib/oxCrypto';
-import { mockWallets, mockOxCrypto } from '@/lib/mockData';
+
+/* ─── Progress bar ───────────────────────────────────────────── */
+function ProgressBar({ value, max, colorClass }: { value: number; max: number; colorClass: string }) {
+    const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+    return (
+        <div className="progress-track">
+            <div className={`progress-fill ${colorClass}`} style={{ width: `${pct}%` }} />
+        </div>
+    );
+}
+
+/* ─── Stat Row ───────────────────────────────────────────────── */
+function StatRow({ label, value, valueClass = 'text-white' }: { label: string; value: string; valueClass?: string }) {
+    return (
+        <div className="flex items-center justify-between py-2.5 border-b border-white/[0.05] last:border-0">
+            <span className="text-sm text-white/50">{label}</span>
+            <span className={`text-sm font-semibold ${valueClass}`}>{value}</span>
+        </div>
+    );
+}
 
 export default function WalletsPage() {
     const { data: session } = useSession();
@@ -16,227 +38,231 @@ export default function WalletsPage() {
     const [wallets, setWallets] = useState<any[]>([]);
     const [transactions, setTransactions] = useState<any[]>([]);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [balanceRes, txRes, limit] = await Promise.all([
-                    fetch('/api/user/balance'),
-                    fetch('/api/user/transactions'),
-                    calculateWalletLiteLimit()
-                ]);
-
-                if (balanceRes.ok && txRes.ok) {
-                    const balanceData = await balanceRes.json();
-                    const txData = await txRes.json();
-                    setWallets(balanceData.wallets || []);
-                    setTransactions(txData.transactions || []);
-                }
-                setWalletLiteLimit(limit);
-            } catch (error) {
-                console.error('Failed to fetch wallet data:', error);
-            } finally {
-                setLoading(false);
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const [balanceRes, txRes, limit] = await Promise.all([
+                fetch('/api/user/balance'),
+                fetch('/api/user/transactions'),
+                calculateWalletLiteLimit(),
+            ]);
+            if (balanceRes.ok && txRes.ok) {
+                const balanceData = await balanceRes.json();
+                const txData = await txRes.json();
+                setWallets(balanceData.wallets || []);
+                setTransactions(txData.transactions || []);
             }
-        };
-
-        if (session) {
-            fetchData();
+            setWalletLiteLimit(limit);
+        } catch (err) {
+            console.error('Wallet fetch error:', err);
+        } finally {
+            setLoading(false);
         }
-    }, [session]);
+    };
+
+    useEffect(() => { if (session) fetchData(); }, [session]);
 
     const oxFullWallet = wallets.find(w => w.type === 'full');
     const oxLiteWallet = wallets.find(w => w.type === 'lite');
-    const dailyInterest = oxFullWallet ? calculateDailyInterest(parseFloat(oxFullWallet.balance)) : 0;
+    const fullBalance = parseFloat(oxFullWallet?.balance || '0');
+    const liteBalance = parseFloat(oxLiteWallet?.balance || '0');
+    const totalBalance = fullBalance + liteBalance;
+    const dailyInterest = oxFullWallet ? calculateDailyInterest(fullBalance) : 0;
+
+    /* group transactions by date */
+    const grouped: Record<string, typeof transactions> = {};
+    transactions.forEach(txn => {
+        const d = new Date(txn.created_at);
+        const now = new Date();
+        const diff = Math.floor((now.getTime() - d.getTime()) / 86400000);
+        const key = diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        (grouped[key] ||= []).push(txn);
+    });
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-10 pb-32">
-            {/* Header */}
-            <header className="mb-2">
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Wallets</h1>
-                <p className="text-slate-500 mt-1">Manage your Ox Wallet (Full) and Wallet Lite</p>
+        <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 pb-24 relative z-10">
+            {/* Ambient */}
+            <div className="fixed top-[5%] right-[10%] w-[40%] h-[40%] bg-emerald-600/6 rounded-full blur-[130px] animate-orb pointer-events-none -z-10" />
+
+            {/* ── Header ── */}
+            <header className="flex items-center justify-between animate-slide-up">
+                <div>
+                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Wallets</h1>
+                    <p className="text-sm text-white/40 mt-1">Manage your Ox Wallet & Wallet Lite</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    {/* Hero Balance */}
+                    <div className="text-right">
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Total Balance</p>
+                        {loading
+                            ? <div className="h-7 w-32 skeleton mt-1" />
+                            : <p className="text-2xl font-bold text-white animate-count-up">{formatUSD(totalBalance)}</p>
+                        }
+                    </div>
+                    <button onClick={fetchData} className="glass-button-secondary p-2.5 rounded-xl"><RefreshCw size={16} /></button>
+                </div>
             </header>
 
-            {/* Wallet Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Ox Wallet (Full) */}
-                <div className="space-y-4">
+            {/* ── Wallet Cards ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* OX Full */}
+                <div className="space-y-4 animate-slide-up-delay-1">
                     {loading ? (
-                        <div className="card-swiss p-8 h-[240px] flex items-center justify-center">
-                            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                        <div className="card-swiss h-[200px] flex items-center justify-center">
+                            <Loader2 className="w-7 h-7 text-white/30 animate-spin" />
                         </div>
                     ) : (
-                        <PhysicalCard
-                            balance={parseFloat(oxFullWallet?.balance || 0)}
-                            cardHolder={session?.user?.name?.toUpperCase() || 'AGENT'}
-                            expiry="12/29"
-                            variant="primary"
-                        />
+                        <PhysicalCard balance={fullBalance} cardHolder={session?.user?.name?.toUpperCase() || 'AGENT'} expiry="12/29" variant="primary" />
                     )}
-                    <div className="card-swiss p-4 space-y-3">
-                        <div className="flex items-center gap-2">
-                            <Wallet size={18} className="text-primary" />
-                            <h3 className="font-semibold text-slate-900">Ox Wallet (Full)</h3>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">Interest Rate:</span>
-                                <span className="font-semibold text-emerald-600">6.5% APY</span>
+
+                    <div className="card-swiss p-5">
+                        <div className="flex items-center gap-2.5 mb-4">
+                            <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-500/25 flex items-center justify-center">
+                                <Wallet size={16} className="text-blue-400" />
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">Daily Interest:</span>
-                                <span className="font-semibold text-slate-900">{formatUSD(dailyInterest)}</span>
+                            <div>
+                                <h3 className="text-sm font-bold text-white">Ox Wallet (Full)</h3>
+                                <span className="badge badge-emerald">KYC Verified</span>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">KYC Status:</span>
-                                <span className="text-emerald-600 font-medium">✓ Verified</span>
+                            <span className="ml-auto badge badge-blue">6.5% APY</span>
+                        </div>
+                        <StatRow label="Daily Interest Earned" value={formatUSD(dailyInterest)} valueClass="text-emerald-400" />
+                        <StatRow label="Monthly Projection" value={formatUSD(dailyInterest * 30)} />
+                        <StatRow label="Transactions" value="Unlimited" />
+                        <div className="mt-4">
+                            <div className="flex justify-between text-xs text-white/40 mb-1.5">
+                                <span>Balance utilization</span>
+                                <span>42%</span>
                             </div>
+                            <ProgressBar value={42} max={100} colorClass="bg-gradient-to-r from-blue-500 to-indigo-500" />
                         </div>
-                        <div className="pt-3 border-t border-slate-100">
-                            <p className="text-xs text-slate-500 flex items-start gap-2">
-                                <Info size={14} className="mt-0.5 flex-shrink-0" />
-                                Earns 6.5% of regional Repo Rate. Unlimited transactions with full KYC.
-                            </p>
-                        </div>
+                        <p className="text-[11px] text-white/30 flex items-start gap-1.5 mt-3.5">
+                            <Info size={12} className="mt-0.5 shrink-0" />
+                            Earns 6.5% of regional Repo Rate. Unlimited transactions with full KYC.
+                        </p>
                     </div>
                 </div>
 
                 {/* Wallet Lite */}
-                <div className="space-y-4">
+                <div className="space-y-4 animate-slide-up-delay-2">
                     {loading ? (
-                        <div className="card-swiss p-8 h-[240px] flex items-center justify-center">
-                            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                        <div className="card-swiss h-[200px] flex items-center justify-center">
+                            <Loader2 className="w-7 h-7 text-white/30 animate-spin" />
                         </div>
                     ) : (
-                        <PhysicalCard
-                            balance={parseFloat(oxLiteWallet?.balance || 0)}
-                            cardHolder={session?.user?.name?.toUpperCase() || 'AGENT'}
-                            expiry="12/29"
-                            variant="dark"
-                        />
+                        <PhysicalCard balance={liteBalance} cardHolder={session?.user?.name?.toUpperCase() || 'AGENT'} expiry="12/29" variant="dark" />
                     )}
-                    <div className="card-swiss p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Zap size={18} className="text-amber-500" />
-                                <h3 className="font-semibold text-slate-900">Wallet Lite</h3>
+
+                    <div className="card-swiss p-5">
+                        <div className="flex items-center gap-2.5 mb-4">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/25 flex items-center justify-center">
+                                <Zap size={16} className="text-amber-400" />
                             </div>
-                            <button
-                                onClick={() => setPinFreeEnabled(!pinFreeEnabled)}
-                                className="flex items-center gap-2 text-sm"
-                            >
-                                {pinFreeEnabled ? (
-                                    <Unlock size={16} className="text-emerald-500" />
-                                ) : (
-                                    <Lock size={16} className="text-slate-400" />
-                                )}
+                            <div>
+                                <h3 className="text-sm font-bold text-white">Wallet Lite</h3>
+                                <span className="badge badge-amber">Gold-Pegged Limit</span>
+                            </div>
+                            <button onClick={() => setPinFreeEnabled(!pinFreeEnabled)}
+                                className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-white/50 hover:text-white transition-colors">
+                                {pinFreeEnabled ? <Unlock size={14} className="text-emerald-400" /> : <Lock size={14} />}
+                                {pinFreeEnabled ? 'PIN-Free ON' : 'PIN-Free OFF'}
                             </button>
                         </div>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">Daily Limit (Gold-Pegged):</span>
-                                <span className="font-semibold text-slate-900">
-                                    {loading ? '...' : formatUSD(walletLiteLimit)}
-                                </span>
+                        <StatRow label="Daily Limit (Gold-Pegged)" value={loading ? '…' : formatUSD(walletLiteLimit)} />
+                        <StatRow label="Today's Spending" value={formatUSD(0)} />
+                        <StatRow label="PIN-Free Payments" value={pinFreeEnabled ? 'Enabled' : 'Disabled'} valueClass={pinFreeEnabled ? 'text-emerald-400' : 'text-white/40'} />
+                        <div className="mt-4">
+                            <div className="flex justify-between text-xs text-white/40 mb-1.5">
+                                <span>Today's usage</span>
+                                <span>0 / {formatUSD(walletLiteLimit)}</span>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">Today's Spending:</span>
-                                <span className="font-semibold text-slate-900">{formatUSD(0)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">PIN-Free Payments:</span>
-                                <span className={`font-medium ${pinFreeEnabled ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                    {pinFreeEnabled ? 'Enabled' : 'Disabled'}
-                                </span>
-                            </div>
+                            <ProgressBar value={0} max={walletLiteLimit} colorClass="bg-gradient-to-r from-amber-500 to-orange-500" />
                         </div>
-                        <div className="pt-3 border-t border-slate-100">
-                            <p className="text-xs text-slate-500 flex items-start gap-2">
-                                <Info size={14} className="mt-0.5 flex-shrink-0" />
-                                Daily limit equals current 1g gold price ({formatUSD(walletLiteLimit)}). Limited KYC required.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Ox Crypto Converter */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
-                <OxCryptoConverter />
-
-                {/* Ox Crypto Balance */}
-                <div className="card-swiss p-8 bg-gradient-to-br from-[#F59E0B] via-[#D97706] to-[#B45309] text-white border-none relative overflow-hidden group">
-                    <div className="absolute inset-0 noise-overlay opacity-20" />
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
-                        <div className="text-center md:text-left">
-                            <p className="text-xs font-bold text-amber-100 uppercase tracking-widest mb-1 opacity-80">Ox Crypto Assets</p>
-                            <h2 className="text-4xl font-extrabold tracking-tight mb-2 flex items-center justify-center md:justify-start gap-2">
-                                <span className="text-amber-200">ரூ</span>
-                                {mockOxCrypto.balance.toFixed(4)}
-                            </h2>
-                            <div className="flex items-center justify-center md:justify-start gap-2 text-sm text-amber-100/90 font-medium">
-                                <TrendingUp size={16} />
-                                <span>≈ {formatUSD(mockOxCrypto.balance * 90)}</span>
-                            </div>
-                        </div>
-                        <div className="w-24 h-24 rounded-full bg-white/10 backdrop-blur-xl flex items-center justify-center text-4xl border border-white/20 shadow-2xl relative group-hover:scale-110 transition-transform duration-500">
-                            <span className="relative z-10 text-amber-100 drop-shadow-lg">ரூ</span>
-                            <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-white/20 to-transparent animate-pulse" />
-                        </div>
-                    </div>
-                    <div className="mt-8 pt-4 border-t border-white/10 relative z-10">
-                        <p className="text-[10px] text-amber-100/60 uppercase font-bold tracking-widest text-center md:text-left">
-                            High-Yield Protocol Active: 1.2% Bonus Earned Today
+                        <p className="text-[11px] text-white/30 flex items-start gap-1.5 mt-3.5">
+                            <Info size={12} className="mt-0.5 shrink-0" />
+                            Daily limit equals current 1g gold price. Limited KYC required.
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Recent Transactions */}
-            <div className="card-swiss p-6">
-                <h3 className="font-semibold text-slate-900 mb-6">Recent Transactions</h3>
-                <div className="space-y-4">
-                    {loading ? (
-                        Array(5).fill(0).map((_, i) => (
-                            <div key={i} className="flex items-center justify-between p-3">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-full skeleton" />
-                                    <div className="space-y-2">
-                                        <div className="h-3 w-32 skeleton" />
-                                        <div className="h-2 w-20 skeleton" />
-                                    </div>
-                                </div>
-                                <div className="h-3 w-16 skeleton" />
+            {/* ── Ox Crypto ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <OxCryptoConverter />
+
+                <div className="card-swiss p-6 bg-gradient-to-br from-[#F59E0B]/80 via-[#D97706]/80 to-[#B45309]/80 border-none relative overflow-hidden group">
+                    <div className="absolute inset-0 noise-texture opacity-10 pointer-events-none mix-blend-overlay" />
+                    <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                    <div className="relative z-10 flex items-center justify-between gap-6">
+                        <div>
+                            <p className="text-[10px] font-black text-amber-100/60 uppercase tracking-[0.2em] mb-1">Ox Crypto Assets</p>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-2xl text-amber-200 font-black">ரூ</span>
+                                <h2 className="text-xl font-extrabold tracking-tight text-white">Not connected</h2>
                             </div>
-                        ))
-                    ) : transactions.length > 0 ? (
-                        transactions.map((txn) => (
-                            <div key={txn.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${parseFloat(txn.amount) > 0 ? 'bg-emerald-100' : 'bg-slate-100'
-                                        }`}>
-                                        {parseFloat(txn.amount) > 0 ? (
-                                            <ArrowDownRight size={20} className="text-emerald-600" />
-                                        ) : (
-                                            <ArrowUpRight size={20} className="text-slate-600" />
-                                        )}
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-900">{txn.description}</p>
-                                        <p className="text-xs text-slate-500">{new Date(txn.created_at).toLocaleDateString()}</p>
-                                    </div>
-                                </div>
-                                <span className={`text-sm font-semibold ${parseFloat(txn.amount) > 0 ? 'text-emerald-600' : 'text-slate-900'
-                                    }`}>
-                                    {parseFloat(txn.amount) > 0 ? '+' : ''}{formatUSD(Math.abs(parseFloat(txn.amount)))}
-                                </span>
+                            <div className="flex items-center gap-2 text-sm text-amber-100/80 font-medium mt-2">
+                                <TrendingUp size={14} />
+                                <span>Connect a crypto provider to see your balance</span>
                             </div>
-                        ))
-                    ) : (
-                        <p className="text-sm text-slate-400 text-center py-4">No transactions found.</p>
-                    )}
+                        </div>
+                        <div className="w-20 h-20 rounded-full bg-white/12 backdrop-blur-xl flex items-center justify-center text-3xl border border-white/20 shadow-2xl group-hover:scale-110 transition-transform duration-500 shrink-0">
+                            <span className="text-amber-100">ரூ</span>
+                        </div>
+                    </div>
+                    <div className="mt-6 pt-4 border-t border-white/15 relative z-10">
+                        <p className="text-[10px] text-amber-100/50 uppercase font-black tracking-widest">
+                            High-Yield Protocol Active · +1.2% Bonus Today
+                        </p>
+                    </div>
                 </div>
             </div>
 
+            {/* ── Recent Transactions ── */}
+            <div className="card-swiss p-6">
+                <div className="flex items-center justify-between mb-5">
+                    <h3 className="text-sm font-bold text-white">Recent Transactions</h3>
+                </div>
+                {loading ? (
+                    <div className="space-y-3">
+                        {Array(4).fill(0).map((_, i) => (
+                            <div key={i} className="flex items-center gap-4 py-2">
+                                <div className="w-10 h-10 rounded-xl skeleton" />
+                                <div className="flex-1 space-y-2"><div className="h-3 w-36 skeleton" /><div className="h-2 w-20 skeleton" /></div>
+                                <div className="h-3 w-16 skeleton" />
+                            </div>
+                        ))}
+                    </div>
+                ) : Object.keys(grouped).length === 0 ? (
+                    <p className="text-sm text-white/30 text-center py-8">No transactions found.</p>
+                ) : (
+                    Object.entries(grouped).map(([date, txns]) => (
+                        <div key={date} className="mb-5">
+                            <p className="text-[11px] font-bold text-white/30 uppercase tracking-widest mb-2 px-1">{date}</p>
+                            {txns.map((txn: any) => {
+                                const isIncome = parseFloat(txn.amount) > 0;
+                                return (
+                                    <div key={txn.id} className="list-row group cursor-pointer">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 ${isIncome ? 'bg-emerald-500/15' : 'bg-white/8'}`}>
+                                                {isIncome
+                                                    ? <ArrowDownRight size={18} className="text-emerald-400" />
+                                                    : <ArrowUpRight size={18} className="text-white/50" />}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-semibold text-white">{txn.description}</p>
+                                                <p className="text-[11px] text-white/35">{new Date(txn.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
+                                            </div>
+                                        </div>
+                                        <span className={`text-sm font-semibold ${isIncome ? 'text-emerald-400' : 'text-white/80'}`}>
+                                            {isIncome ? '+' : ''}{formatUSD(Math.abs(parseFloat(txn.amount)))}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ))
+                )}
+            </div>
         </div>
     );
 }

@@ -31,10 +31,6 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
     }
 
-    const recommendations = [
-        { id: 'inv-001', title: 'Low‑risk index fund', description: 'Ideal for beginners', risk: 'low' },
-        { id: 'loan-123', title: 'Personal loan – 5% APR', description: 'Quick approval', risk: 'medium' },
-        { id: 'card-xyz', title: 'Premium credit card', description: 'Earn 2% cashback', risk: 'high' },
-    ];
-    return NextResponse.json({ recommendations });
+    // Recommendations must come from a connected provider/model; do not invent financial advice.
+    return NextResponse.json({ recommendations: [] });
 }

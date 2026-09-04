@@ -16,35 +16,8 @@ import {
     Legend
 } from 'recharts';
 
-// Mock Data
-const mockChartData = [
-    { name: 'Jan', value: 4000 },
-    { name: 'Feb', value: 3000 },
-    { name: 'Mar', value: 2000 },
-    { name: 'Apr', value: 2780 },
-    { name: 'May', value: 1890 },
-    { name: 'Jun', value: 2390 },
-    { name: 'Jul', value: 3490 },
-];
-
-const mockSpendingData = [
-    { name: 'Housing', value: 400 },
-    { name: 'Food', value: 300 },
-    { name: 'Transport', value: 300 },
-    { name: 'Utilities', value: 200 },
-];
-
-const mockTrendData = [
-    { name: 'Mon', income: 400, expense: 240 },
-    { name: 'Tue', income: 300, expense: 139 },
-    { name: 'Wed', income: 200, expense: 980 },
-    { name: 'Thu', income: 278, expense: 390 },
-    { name: 'Fri', income: 189, expense: 480 },
-    { name: 'Sat', income: 239, expense: 380 },
-    { name: 'Sun', income: 349, expense: 430 },
-];
-
 const COLORS = ['#818CF8', '#34D399', '#FBBF24', '#94A3B8']; // Adjusted for dark theme
+const EmptyChart = () => <div className="h-[300px] flex items-center justify-center text-sm text-white/35">Not enough activity to show this chart yet.</div>;
 
 // Tooltip style common
 const tooltipStyle = {
@@ -57,9 +30,9 @@ const tooltipStyle = {
 };
 
 // Area Chart - Clean
-export const PortfolioChart = () => (
+export const PortfolioChart = ({ data = [] }: { data?: { name: string; value: number }[] }) => data.length ? (
     <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={mockChartData}>
+        <AreaChart data={data}>
             <defs>
                 <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#818CF8" stopOpacity={0.3} />
@@ -80,14 +53,14 @@ export const PortfolioChart = () => (
             />
         </AreaChart>
     </ResponsiveContainer>
-);
+) : <EmptyChart />;
 
 // Pie Chart - Minimal Donut
-export const SpendingPieChart = () => (
+export const SpendingPieChart = ({ data = [] }: { data?: { name: string; value: number }[] }) => data.length ? (
     <ResponsiveContainer width="100%" height={300}>
         <PieChart>
             <Pie
-                data={mockSpendingData}
+                data={data}
                 cx="50%"
                 cy="50%"
                 innerRadius={80}
@@ -97,7 +70,7 @@ export const SpendingPieChart = () => (
                 cornerRadius={8}
                 stroke="rgba(0,0,0,0)" // Remove border
             >
-                {mockSpendingData.map((entry, index) => (
+                {data.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
             </Pie>
@@ -107,12 +80,12 @@ export const SpendingPieChart = () => (
             />
         </PieChart>
     </ResponsiveContainer>
-);
+) : <EmptyChart />;
 
 // Bar Chart - Rounded & Clean
-export const TransactionTrendChart = () => (
+export const TransactionTrendChart = ({ data = [] }: { data?: { name: string; income: number; expense: number }[] }) => data.length ? (
     <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={mockTrendData} barSize={32}>
+        <BarChart data={data} barSize={32}>
             <Tooltip
                 cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                 contentStyle={tooltipStyle}
@@ -122,4 +95,4 @@ export const TransactionTrendChart = () => (
             <Bar dataKey="expense" fill="#F87171" radius={[6, 6, 6, 6]} opacity={0.8} />
         </BarChart>
     </ResponsiveContainer>
-);
+) : <EmptyChart />;

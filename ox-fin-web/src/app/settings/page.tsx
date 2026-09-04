@@ -1,259 +1,298 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
-import { User, Lock, Bell, CreditCard, Shield, Mail, Phone, Globe, Eye, EyeOff, Check, Loader2 } from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
+import { User, Lock, Bell, CreditCard, Shield, Mail, Globe, Check, Languages, LogOut, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ConsentCenter from '@/components/ui/ConsentCenter';
 import MFASetupModal from '@/components/ui/MFASetupModal';
+import { regionalDefaults, regionalOptions, type RegionalPreferences } from '@/lib/regional';
 
-const SettingsCard = ({ title, description, icon: Icon, children }: any) => (
-    <div className="card-swiss p-8 space-y-6">
-        <div className="flex items-center gap-4 pb-6 border-b border-white/10">
-            <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-                <Icon size={24} className="text-white" />
+/* ── Toggle ──────────────────────────────────────────────────────── */
+function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
+    return (
+        <button onClick={onChange} aria-label="Toggle setting" className="shrink-0">
+            <div className={cn('toggle-track', enabled ? 'on' : 'off')}>
+                <span className={cn('toggle-thumb', enabled ? 'on' : 'off')} />
             </div>
-            <div>
-                <h3 className="text-lg font-bold text-white">{title}</h3>
-                <p className="text-sm text-white/50">{description}</p>
+        </button>
+    );
+}
+
+/* ── Toggle Row ──────────────────────────────────────────────────── */
+function ToggleRow({ icon: Icon, label, sub, enabled, onChange, iconClass = 'text-white/50' }: {
+    icon: any; label: string; sub: string; enabled: boolean; onChange: () => void; iconClass?: string;
+}) {
+    return (
+        <div className="flex items-center justify-between py-4 border-b border-white/[0.05] last:border-0">
+            <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl bg-white/[0.05] border border-white/[0.07] flex items-center justify-center ${iconClass}`}>
+                    <Icon size={16} />
+                </div>
+                <div>
+                    <p className="text-sm font-semibold text-white">{label}</p>
+                    <p className="text-xs text-white/35 mt-0.5">{sub}</p>
+                </div>
             </div>
+            <Toggle enabled={enabled} onChange={onChange} />
         </div>
-        {children}
-    </div>
-);
+    );
+}
 
-const ToggleSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: () => void }) => (
-    <button
-        onClick={onChange}
-        title="Toggle Setting"
-        aria-label="Toggle Setting"
-        className={cn(
-            "relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 border border-white/10",
-            enabled ? "bg-white/20 shadow-[0_0_10px_rgba(255,255,255,0.2)]" : "bg-black/50"
-        )}
-    >
-        <span
-            className={cn(
-                "inline-block h-4 w-4 transform rounded-full bg-white transition-all shadow-sm",
-                enabled ? "translate-x-6" : "translate-x-1 opacity-50"
-            )}
-        />
-    </button>
-);
+const TABS = [
+    { id: 'profile',       label: 'Profile',       icon: User },
+    { id: 'security',      label: 'Security',      icon: Shield },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'regional',      label: 'Regional',      icon: Globe },
+    { id: 'accounts',      label: 'Accounts',      icon: CreditCard },
+];
 
 export default function SettingsPage() {
     const { data: session } = useSession();
+    const [tab, setTab] = useState('profile');
     const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
     const [isMFAModalOpen, setIsMFAModalOpen] = useState(false);
     const [biometricsEnabled, setBiometricsEnabled] = useState(true);
     const [emailNotifs, setEmailNotifs] = useState(true);
     const [pushNotifs, setPushNotifs] = useState(true);
+    const [marketingNotifs, setMarketingNotifs] = useState(false);
+    const [regional, setRegional] = useState<RegionalPreferences>(regionalDefaults);
+    const [savedRegional, setSavedRegional] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    const fetchSecurityStatus = async () => {
+    useEffect(() => {
         try {
-            const res = await fetch('/api/user/security-status');
-            const data = await res.json();
-            if (res.ok) {
-                setTwoFactorEnabled(data.twoFactorEnabled);
-            }
-        } catch (err) {
-            console.error('Failed to fetch security status:', err);
-        } finally {
-            setLoading(false);
-        }
+            const saved = localStorage.getItem('oxfin-regional-preferences');
+            if (saved) setRegional({ ...regionalDefaults, ...JSON.parse(saved) });
+        } catch { }
+    }, []);
+
+    const saveRegional = (locale: string) => {
+        const option = regionalOptions.find(i => i.locale === locale) || regionalOptions[0];
+        const next = { locale: option.locale, currency: option.currency, timeZone: option.timeZone };
+        setRegional(next);
+        localStorage.setItem('oxfin-regional-preferences', JSON.stringify(next));
+        setSavedRegional(true);
+        setTimeout(() => setSavedRegional(false), 2200);
     };
 
     useEffect(() => {
-        if (session) {
-            fetchSecurityStatus();
-        }
+        if (!session) return;
+        fetch('/api/user/security-status')
+            .then(r => r.json())
+            .then(d => setTwoFactorEnabled(d.twoFactorEnabled))
+            .catch(() => { })
+            .finally(() => setLoading(false));
     }, [session]);
 
-    const handleMFAToggle = () => {
-        if (!twoFactorEnabled) {
-            setIsMFAModalOpen(true);
-        } else {
-            // Logic to disable MFA
-        }
-    };
+    const initials = session?.user?.name
+        ? session.user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+        : 'OX';
 
     return (
-        <div className="p-8 max-w-6xl mx-auto space-y-8 pb-32 relative z-10" suppressHydrationWarning>
-            {/* Background Ambient Orbs for Settings */}
-            <div className="fixed top-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-600/10 rounded-full blur-[150px] animate-orb pointer-events-none -z-10" />
-            <div className="fixed bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[150px] animate-orb-delayed pointer-events-none -z-10" />
+        <div className="p-6 lg:p-8 max-w-5xl mx-auto space-y-8 pb-24 relative z-10" suppressHydrationWarning>
+            {/* Ambient */}
+            <div className="fixed top-[5%] right-[5%] w-[40%] h-[40%] bg-purple-600/6 rounded-full blur-[140px] animate-orb pointer-events-none -z-10" />
 
-            {/* Header */}
-            <header className="mb-10">
-                <h1 className="text-4xl font-extrabold text-white tracking-tight drop-shadow-md">Settings</h1>
-                <p className="text-white/60 mt-2 font-medium">Manage your account preferences and security</p>
+            {/* ── Header ── */}
+            <header className="animate-slide-up">
+                <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Settings</h1>
+                <p className="text-sm text-white/40 mt-1">Manage your account preferences and security</p>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Profile & Account */}
-                <SettingsCard
-                    title="Profile & Account"
-                    description="Update your personal information"
-                    icon={User}
-                >
-                    <div className="space-y-6 pt-2">
-                        <div>
-                            <label className="text-[10px] font-bold text-white/40 mb-2 block uppercase tracking-[0.2em]">Full Name</label>
-                            <input
-                                type="text"
-                                defaultValue={session?.user?.name || "Agent Smith"}
-                                placeholder="Your full name"
-                                className="glass-input w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-white/20 transition-all text-sm"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-white/40 mb-2 block uppercase tracking-[0.2em]">Email Address</label>
-                            <input
-                                type="email"
-                                defaultValue={session?.user?.email || "agent@oxfin.com"}
-                                placeholder="name@example.com"
-                                className="glass-input w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-white/20 transition-all text-sm"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-white/40 mb-2 block uppercase tracking-[0.2em]">Phone Number</label>
-                            <input
-                                type="tel"
-                                defaultValue="+1 (555) 123-4567"
-                                placeholder="+1 (000) 000-0000"
-                                className="glass-input w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-white/20 transition-all text-sm"
-                            />
-                        </div>
-                        <button className="glass-button w-full py-3.5 rounded-xl font-bold tracking-wide mt-4">
-                            Save Changes
-                        </button>
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* ── Tab Rail ── */}
+                <div className="lg:col-span-1">
+                    <div className="section-card p-2 space-y-0.5 animate-slide-up-delay-1">
+                        {TABS.map(t => (
+                            <button key={t.id} onClick={() => setTab(t.id)}
+                                className={cn(
+                                    'w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all text-left',
+                                    tab === t.id
+                                        ? 'bg-white/10 text-white'
+                                        : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
+                                )}>
+                                <t.icon size={16} className={tab === t.id ? 'text-blue-400' : 'text-white/30'} />
+                                {t.label}
+                            </button>
+                        ))}
                     </div>
-                </SettingsCard>
+                </div>
 
-                {/* Security */}
-                <SettingsCard
-                    title="Security"
-                    description="Manage authentication and security settings"
-                    icon={Shield}
-                >
-                    <div className="space-y-6">
-                        <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="p-2 bg-white/5 rounded-lg"><Lock size={20} className="text-white" /></div>
+                {/* ── Content ── */}
+                <div className="lg:col-span-3 space-y-5 animate-slide-up-delay-2">
+
+                    {/* Profile */}
+                    {tab === 'profile' && (
+                        <div className="card-swiss p-6 space-y-6">
+                            <h2 className="text-base font-bold text-white">Profile & Account</h2>
+
+                            {/* Avatar */}
+                            <div className="flex items-center gap-5">
+                                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xl font-black ring-2 ring-white/10 shadow-xl shadow-blue-500/20">
+                                    {initials}
+                                </div>
                                 <div>
-                                    <p className="text-sm font-bold text-white">Two-Factor Authentication</p>
-                                    <p className="text-xs text-white/50 mt-1">Add an extra layer of security</p>
+                                    <p className="text-sm font-bold text-white">{session?.user?.name || 'Account holder'}</p>
+                                    <p className="text-xs text-white/40 mt-0.5">{session?.user?.email}</p>
+                                    <button className="text-xs text-blue-400 hover:text-blue-300 mt-1.5 font-medium transition-colors">Change photo</button>
                                 </div>
                             </div>
-                            <ToggleSwitch
-                                enabled={twoFactorEnabled}
-                                onChange={handleMFAToggle}
-                            />
-                        </div>
-                        <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="p-2 bg-white/5 rounded-lg"><Shield size={20} className="text-white" /></div>
-                                <div>
-                                    <p className="text-sm font-bold text-white">Biometric Login</p>
-                                    <p className="text-xs text-white/50 mt-1">Use Face ID or Touch ID</p>
+
+                            {[
+                                { label: 'Full Name', type: 'text', defaultValue: session?.user?.name || '', placeholder: 'Your full name' },
+                                { label: 'Email Address', type: 'email', defaultValue: session?.user?.email || '', placeholder: 'name@example.com' },
+                                { label: 'Phone Number', type: 'tel', defaultValue: '+1 (555) 123-4567', placeholder: '+1 (000) 000-0000' },
+                            ].map(f => (
+                                <div key={f.label}>
+                                    <label className="text-[10px] font-bold text-white/30 mb-2 block uppercase tracking-[0.15em]">{f.label}</label>
+                                    <input type={f.type} defaultValue={f.defaultValue} placeholder={f.placeholder}
+                                        className="glass-input w-full px-4 py-3 rounded-xl text-sm" />
                                 </div>
-                            </div>
-                            <ToggleSwitch enabled={biometricsEnabled} onChange={() => setBiometricsEnabled(!biometricsEnabled)} />
-                        </div>
-                        <div className="pt-2">
-                            <button className="text-sm text-white/70 font-semibold hover:text-white transition-colors underline underline-offset-4 decoration-white/30 hover:decoration-white">
-                                Change Password
+                            ))}
+
+                            <button className="glass-button w-full py-3.5 rounded-xl font-bold text-sm">
+                                Save Changes
                             </button>
                         </div>
-                    </div>
-                </SettingsCard>
+                    )}
 
-                {/* Linked Bank Accounts */}
-                <SettingsCard
-                    title="Linked Bank Accounts"
-                    description="Manage your connected financial institutions"
-                    icon={CreditCard}
-                >
-                    <div className="space-y-4">
-                        {[
-                            { name: 'Chase Bank', account: '****1234', status: 'Connected' },
-                            { name: 'Wells Fargo', account: '****5678', status: 'Connected' },
-                        ].map((bank, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shadow-inner">
-                                        <CreditCard size={20} className="text-white" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-white tracking-wide">{bank.name}</p>
-                                        <p className="text-[10px] text-white/50 tracking-widest mt-0.5">{bank.account}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1.5 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
-                                        <Check size={12} strokeWidth={3} /> {bank.status}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                        <button className="w-full py-3.5 rounded-xl border-2 border-dashed border-white/20 text-white/60 font-bold tracking-wide hover:border-white/50 hover:text-white hover:bg-white/5 transition-all mt-2">
-                            + Add New Account
-                        </button>
-                    </div>
-                </SettingsCard>
+                    {/* Security */}
+                    {tab === 'security' && (
+                        <div className="card-swiss p-6 space-y-1">
+                            <h2 className="text-base font-bold text-white mb-4">Security Settings</h2>
 
-                {/* Notification Preferences */}
-                <SettingsCard
-                    title="Notification Preferences"
-                    description="Control how you receive updates"
-                    icon={Bell}
-                >
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="p-2 bg-white/5 rounded-lg"><Mail size={20} className="text-white" /></div>
-                                <div>
-                                    <p className="text-sm font-bold text-white">Email Notifications</p>
-                                    <p className="text-xs text-white/50 mt-1">Transaction alerts and updates</p>
+                            <ToggleRow
+                                icon={Lock} label="Two-Factor Authentication"
+                                sub="Add an extra layer of security to your account"
+                                enabled={twoFactorEnabled}
+                                onChange={() => !twoFactorEnabled && setIsMFAModalOpen(true)}
+                                iconClass={twoFactorEnabled ? 'text-emerald-400 bg-emerald-500/12 border-emerald-500/20' : 'text-white/40'}
+                            />
+                            <ToggleRow
+                                icon={Shield} label="Biometric Login"
+                                sub="Use Face ID or Touch ID to sign in"
+                                enabled={biometricsEnabled}
+                                onChange={() => setBiometricsEnabled(!biometricsEnabled)}
+                            />
+
+                            <div className="pt-5">
+                                <button className="glass-button-secondary w-full py-3 rounded-xl text-sm font-semibold">
+                                    Change Password
+                                </button>
+                            </div>
+
+                            {twoFactorEnabled && (
+                                <div className="mt-2 flex items-center gap-2.5 p-3.5 rounded-xl bg-emerald-500/8 border border-emerald-500/20">
+                                    <Shield size={16} className="text-emerald-400 shrink-0" />
+                                    <p className="text-xs text-emerald-300 font-medium">Your account is protected with two-factor authentication.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Notifications */}
+                    {tab === 'notifications' && (
+                        <div className="card-swiss p-6">
+                            <h2 className="text-base font-bold text-white mb-4">Notification Preferences</h2>
+                            <ToggleRow icon={Mail} label="Email Notifications" sub="Transaction alerts and account updates" enabled={emailNotifs} onChange={() => setEmailNotifs(!emailNotifs)} />
+                            <ToggleRow icon={Bell} label="Push Notifications" sub="Real-time mobile alerts" enabled={pushNotifs} onChange={() => setPushNotifs(!pushNotifs)} />
+                            <ToggleRow icon={Globe} label="Marketing & Offers" sub="Product updates, promotions, and offers" enabled={marketingNotifs} onChange={() => setMarketingNotifs(!marketingNotifs)} />
+                        </div>
+                    )}
+
+                    {/* Regional */}
+                    {tab === 'regional' && (
+                        <div className="card-swiss p-6 space-y-5">
+                            <h2 className="text-base font-bold text-white">Language & Region</h2>
+                            <div>
+                                <label htmlFor="regional-pref" className="text-[10px] font-bold text-white/30 mb-2 block uppercase tracking-[0.15em]">Display Region</label>
+                                <select id="regional-pref" value={regional.locale} onChange={e => saveRegional(e.target.value)}
+                                    className="glass-input w-full px-4 py-3 rounded-xl text-sm">
+                                    {regionalOptions.map(o => <option key={o.locale} value={o.locale} className="bg-slate-900">{o.label}</option>)}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-white/[0.04] border border-white/[0.07] rounded-xl p-4">
+                                    <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Currency</p>
+                                    <p className="text-sm font-bold text-white">{regional.currency}</p>
+                                </div>
+                                <div className="bg-white/[0.04] border border-white/[0.07] rounded-xl p-4">
+                                    <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Time Zone</p>
+                                    <p className="text-sm font-bold text-white truncate">{regional.timeZone}</p>
                                 </div>
                             </div>
-                            <ToggleSwitch enabled={emailNotifs} onChange={() => setEmailNotifs(!emailNotifs)} />
-                        </div>
-                        <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="p-2 bg-white/5 rounded-lg"><Bell size={20} className="text-white" /></div>
-                                <div>
-                                    <p className="text-sm font-bold text-white">Push Notifications</p>
-                                    <p className="text-xs text-white/50 mt-1">Real-time mobile alerts</p>
+                            <p className="text-xs text-white/30 leading-relaxed">
+                                Preferences saved on this device. OxFin uses local conventions for amounts and dates without changing the underlying account currency.
+                            </p>
+                            {savedRegional && (
+                                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium animate-fade-in">
+                                    <Check size={15} /> Regional preferences saved
                                 </div>
-                            </div>
-                            <ToggleSwitch enabled={pushNotifs} onChange={() => setPushNotifs(!pushNotifs)} />
+                            )}
                         </div>
-                        <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="p-2 bg-white/5 rounded-lg"><Globe size={20} className="text-white" /></div>
-                                <div>
-                                    <p className="text-sm font-bold text-white">Marketing</p>
-                                    <p className="text-xs text-white/50 mt-1">Product updates and offers</p>
+                    )}
+
+                    {/* Linked Accounts */}
+                    {tab === 'accounts' && (
+                        <div className="card-swiss p-6 space-y-4">
+                            <h2 className="text-base font-bold text-white mb-2">Linked Bank Accounts</h2>
+                            {[
+                                { name: 'Chase Bank', account: '••••1234' },
+                                { name: 'Wells Fargo', account: '••••5678' },
+                            ].map((bank) => (
+                                <div key={bank.name} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] hover:bg-white/[0.05] transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-white/[0.08] border border-white/[0.1] flex items-center justify-center">
+                                            <CreditCard size={18} className="text-white/60" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-white">{bank.name}</p>
+                                            <p className="text-[11px] text-white/35 tracking-wider mt-0.5">{bank.account}</p>
+                                        </div>
+                                    </div>
+                                    <span className="badge badge-emerald"><Check size={9} /> Connected</span>
                                 </div>
-                            </div>
-                            <ToggleSwitch enabled={false} onChange={() => { }} />
+                            ))}
+                            <button className="w-full py-3.5 rounded-2xl border border-dashed border-white/15 text-white/35 font-semibold text-sm hover:border-white/30 hover:text-white/60 hover:bg-white/[0.03] transition-all">
+                                + Link New Account
+                            </button>
                         </div>
-                    </div>
-                </SettingsCard>
+                    )}
+
+                    {/* Consent Center (always visible on profile tab) */}
+                    {tab === 'profile' && (
+                        <ConsentCenter />
+                    )}
+
+                    {/* Danger Zone (always at bottom of security) */}
+                    {tab === 'security' && (
+                        <div className="card-swiss p-6 border-red-500/20">
+                            <div className="flex items-center gap-3 mb-4">
+                                <AlertTriangle size={18} className="text-red-400" />
+                                <h3 className="text-sm font-bold text-red-400">Danger Zone</h3>
+                            </div>
+                            <p className="text-xs text-white/35 mb-4 leading-relaxed">
+                                These actions are permanent and cannot be undone. Proceed with caution.
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button onClick={() => signOut({ callbackUrl: '/' })}
+                                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 text-white/50 text-sm font-semibold hover:border-red-500/30 hover:text-red-400 hover:bg-red-500/5 transition-all">
+                                    <LogOut size={15} /> Sign Out
+                                </button>
+                                <button className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-500/20 text-red-400/70 text-sm font-semibold hover:bg-red-500/8 hover:text-red-400 transition-all">
+                                    <AlertTriangle size={15} /> Delete Account
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {/* Consent Center - Full Width */}
-            <div className="mt-8">
-                <ConsentCenter />
-            </div>
-
-            {/* MFA Setup Modal */}
             <MFASetupModal
                 isOpen={isMFAModalOpen}
                 onClose={() => setIsMFAModalOpen(false)}
-                onSuccess={fetchSecurityStatus}
+                onSuccess={() => setTwoFactorEnabled(true)}
             />
         </div>
     );

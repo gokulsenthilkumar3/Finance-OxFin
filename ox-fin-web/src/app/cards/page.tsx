@@ -1,114 +1,35 @@
 'use client';
 
-import { useState } from 'react';
-import { Lock, Unlock, Eye, MoreVertical, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CreditCard, Loader2, Lock, Unlock } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import PhysicalCard from '@/components/ui/PhysicalCard';
+import { formatMoney, regionalDefaults, type RegionalPreferences } from '@/lib/regional';
 
 export default function CardsPage() {
-    const [cardLocked, setCardLocked] = useState(false);
+    const { data: session } = useSession();
+    const [wallets, setWallets] = useState<any[]>([]);
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [selected, setSelected] = useState(0);
+    const [locked, setLocked] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [preferences, setPreferences] = useState<RegionalPreferences>(regionalDefaults);
 
-    const cards = [
-        { id: 1, name: 'OxFine Platinum', balance: 28450.00, last4: '1234', expiry: '09/29', type: 'primary' },
-        { id: 2, name: 'OxFine Business', balance: 15230.50, last4: '5678', expiry: '12/28', type: 'dark' },
-    ];
+    useEffect(() => {
+        try { const saved = localStorage.getItem('oxfin-regional-preferences'); if (saved) setPreferences({ ...regionalDefaults, ...JSON.parse(saved) }); } catch { /* use defaults */ }
+        if (!session) return;
+        Promise.all([fetch('/api/user/balance'), fetch('/api/user/transactions')]).then(async ([balance, activity]) => { setWallets((await balance.json()).wallets || []); setTransactions((await activity.json()).transactions || []); }).finally(() => setLoading(false));
+    }, [session]);
 
-    const transactions = [
-        { merchant: 'Amazon', amount: -129.99, date: 'Today, 2:30 PM', category: 'Shopping' },
-        { merchant: 'Starbucks', amount: -5.75, date: 'Today, 9:15 AM', category: 'Food' },
-        { merchant: 'Uber', amount: -18.50, date: 'Yesterday, 6:45 PM', category: 'Transport' },
-        { merchant: 'Netflix', amount: -15.99, date: 'Jan 15', category: 'Entertainment' },
-    ];
-
-    return (
-        <div className="p-8 max-w-6xl mx-auto space-y-8 pb-24">
-            {/* Header */}
-            <header className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Cards</h1>
-                    <p className="text-slate-500 mt-1">Manage your virtual and physical cards</p>
-                </div>
-                <button className="bg-primary text-white px-6 py-2.5 rounded-xl font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/25 flex items-center gap-2">
-                    <Plus size={18} />
-                    Request Card
-                </button>
-            </header>
-
-            {/* Cards Display */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {cards.map((card) => (
-                    <div key={card.id}>
-                        <PhysicalCard
-                            balance={card.balance}
-                            cardHolder="AGENT SMITH"
-                            expiry={card.expiry}
-                            variant={card.type as any}
-                        />
-                    </div>
-                ))}
-            </div>
-
-            {/* Card Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <button
-                    onClick={() => setCardLocked(!cardLocked)}
-                    className="card-swiss p-6 hover:shadow-md transition-all cursor-pointer group"
-                >
-                    <div className="flex items-center gap-4">
-                        {cardLocked ? (
-                            <Lock size={24} className="text-red-500" />
-                        ) : (
-                            <Unlock size={24} className="text-emerald-500" />
-                        )}
-                        <div className="text-left">
-                            <p className="font-semibold text-slate-900 group-hover:text-primary transition-colors">
-                                {cardLocked ? 'Card Locked' : 'Card Active'}
-                            </p>
-                            <p className="text-sm text-slate-500">Tap to {cardLocked ? 'unlock' : 'lock'}</p>
-                        </div>
-                    </div>
-                </button>
-
-                <button className="card-swiss p-6 hover:shadow-md transition-all cursor-pointer group">
-                    <div className="flex items-center gap-4">
-                        <Eye size={24} className="text-slate-600 group-hover:text-primary transition-colors" />
-                        <div className="text-left">
-                            <p className="font-semibold text-slate-900 group-hover:text-primary transition-colors">View PIN</p>
-                            <p className="text-sm text-slate-500">Reveal your PIN</p>
-                        </div>
-                    </div>
-                </button>
-
-                <button className="card-swiss p-6 hover:shadow-md transition-all cursor-pointer group">
-                    <div className="flex items-center gap-4">
-                        <MoreVertical size={24} className="text-slate-600 group-hover:text-primary transition-colors" />
-                        <div className="text-left">
-                            <p className="font-semibold text-slate-900 group-hover:text-primary transition-colors">Set Limits</p>
-                            <p className="text-sm text-slate-500">Spending controls</p>
-                        </div>
-                    </div>
-                </button>
-            </div>
-
-            {/* Recent Transactions */}
-            <div className="card-swiss p-6">
-                <h3 className="font-semibold text-slate-900 mb-6">Recent Card Transactions</h3>
-                <div className="space-y-4">
-                    {transactions.map((txn, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors group cursor-pointer">
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-sm text-slate-600 group-hover:bg-blue-50 group-hover:text-primary transition-colors">
-                                    {txn.merchant[0]}
-                                </div>
-                                <div>
-                                    <p className="text-sm font-semibold text-slate-900">{txn.merchant}</p>
-                                    <p className="text-xs text-slate-400">{txn.date} • {txn.category}</p>
-                                </div>
-                            </div>
-                            <span className="text-sm font-semibold text-slate-900">${Math.abs(txn.amount).toFixed(2)}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+    const wallet = wallets[selected];
+    const charges = transactions.filter((txn) => Number(txn.amount) < 0);
+    return <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-8 pb-24 relative z-10">
+        <header><p className="text-xs font-bold text-white/40 uppercase tracking-[0.2em] mb-2">Payments</p><h1 className="text-3xl font-bold text-white">Cards</h1><p className="text-white/55 mt-2">Cards and payment activity connected to your OxFin wallets.</p></header>
+        {loading ? <div className="card-swiss p-16 flex justify-center"><Loader2 className="animate-spin text-white/50" /></div> : wallets.length === 0 ? <div className="card-swiss p-12 text-center"><CreditCard className="mx-auto text-white/35 mb-4" size={36} /><h2 className="text-xl font-bold text-white">No cards or wallets yet</h2><p className="text-white/50 mt-2">Add a wallet to see its balance and payment activity here.</p></div> : <>
+            <div className="flex gap-2 overflow-x-auto">{wallets.map((item, index) => <button key={item.id} onClick={() => setSelected(index)} className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap ${selected === index ? 'bg-white text-slate-950' : 'bg-white/5 text-white/55'}`}>{item.type === 'full' ? 'Ox Wallet' : 'Wallet Lite'}</button>)}</div>
+            <div className="max-w-xl"><PhysicalCard balance={Number(wallet?.balance || 0)} cardHolder={session?.user?.name?.toUpperCase() || 'ACCOUNT HOLDER'} expiry="—" variant={wallet?.type === 'full' ? 'primary' : 'dark'} /></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><button onClick={() => setLocked(!locked)} className="card-swiss p-5 flex items-center gap-4 text-left"><div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">{locked ? <Lock className="text-red-300" size={19} /> : <Unlock className="text-emerald-300" size={19} />}</div><div><p className="text-white font-semibold">{locked ? 'Wallet locked' : 'Wallet active'}</p><p className="text-white/45 text-sm">{locked ? 'Unlock to allow payments' : 'Tap to lock payments'}</p></div></button><div className="card-swiss p-5"><p className="text-xs text-white/40 uppercase tracking-widest">Available balance</p><p className="text-2xl font-bold text-white mt-2">{formatMoney(wallet?.balance || 0, preferences)}</p><p className="text-sm text-white/45 mt-1">From your connected wallet</p></div></div>
+            <section className="card-swiss p-6"><h2 className="text-lg font-bold text-white">Recent payment activity</h2>{charges.length ? <div className="divide-y divide-white/10 mt-4">{charges.map((txn) => <div key={txn.id} className="py-4 flex items-center justify-between"><div><p className="font-semibold text-white">{txn.description}</p><p className="text-xs text-white/45 mt-1">{new Date(txn.created_at).toLocaleDateString(preferences.locale, { timeZone: preferences.timeZone })}</p></div><span className="text-white font-semibold">-{formatMoney(Math.abs(Number(txn.amount)), preferences)}</span></div>)}</div> : <p className="text-white/45 text-sm py-10 text-center">No payment activity is available yet.</p>}</section>
+        </>}
+    </div>;
 }

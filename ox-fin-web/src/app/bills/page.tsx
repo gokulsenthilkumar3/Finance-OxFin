@@ -1,168 +1,25 @@
 'use client';
 
-import { useState } from 'react';
-import { Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Smartphone, Mail, MessageSquare } from 'lucide-react';
-import { parseMockBills, type ParsedBill } from '@/lib/billParser';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, FileText, Loader2, Plus, ReceiptText } from 'lucide-react';
+import { formatDate, formatMoney, regionalDefaults, type RegionalPreferences } from '@/lib/regional';
 
 export default function BillsPage() {
-    const [parsedBills] = useState<ParsedBill[]>(parseMockBills());
-    const [showParser, setShowParser] = useState(false);
-    const upcomingBills = [
-        { name: 'Netflix Subscription', amount: 15.99, dueDate: 'Jan 25', status: 'pending', category: 'Entertainment' },
-        { name: 'Electric Bill', amount: 142.50, dueDate: 'Jan 28', status: 'pending', category: 'Utilities' },
-        { name: 'Internet Service', amount: 79.99, dueDate: 'Feb 1', status: 'pending', category: 'Utilities' },
-        { name: 'Car Insurance', amount: 245.00, dueDate: 'Feb 5', status: 'pending', category: 'Insurance' },
-    ];
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [preferences, setPreferences] = useState<RegionalPreferences>(regionalDefaults);
 
-    const paidBills = [
-        { name: 'Rent Payment', amount: 1850.00, paidDate: 'Jan 1', category: 'Housing' },
-        { name: 'Phone Bill', amount: 65.00, paidDate: 'Jan 15', category: 'Utilities' },
-        { name: 'Gym Membership', amount: 49.99, paidDate: 'Jan 10', category: 'Health' },
-    ];
+    useEffect(() => {
+        try { const saved = localStorage.getItem('oxfin-regional-preferences'); if (saved) setPreferences({ ...regionalDefaults, ...JSON.parse(saved) }); } catch { /* use defaults */ }
+        fetch('/api/user/transactions').then((res) => res.json()).then((data) => setTransactions(data.transactions || [])).finally(() => setLoading(false));
+    }, []);
 
-    return (
-        <div className="p-8 max-w-6xl mx-auto space-y-8 pb-24">
-            {/* Header */}
-            <header>
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Bills & Payments</h1>
-                <p className="text-slate-500 mt-1">Manage your recurring payments</p>
-            </header>
+    const billActivity = useMemo(() => transactions.filter((txn) => /bill|rent|utility|electric|internet|insurance|subscription|phone/i.test(txn.description || '')), [transactions]);
+    const total = billActivity.reduce((sum, txn) => sum + Math.abs(Number(txn.amount) || 0), 0);
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="card-swiss p-6 border-l-4 border-l-amber-500">
-                    <div className="flex items-center gap-3 mb-3">
-                        <Clock size={20} className="text-amber-500" />
-                        <p className="text-sm font-medium text-slate-600">Upcoming Bills</p>
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-900">${upcomingBills.reduce((sum, b) => sum + b.amount, 0).toFixed(2)}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{upcomingBills.length} bills due soon</p>
-                </div>
-
-                <div className="card-swiss p-6 border-l-4 border-l-emerald-500">
-                    <div className="flex items-center gap-3 mb-3">
-                        <CheckCircle size={20} className="text-emerald-500" />
-                        <p className="text-sm font-medium text-slate-600">Paid This Month</p>
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-900">${paidBills.reduce((sum, b) => sum + b.amount, 0).toFixed(2)}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{paidBills.length} payments completed</p>
-                </div>
-
-                <div className="card-swiss p-6 border-l-4 border-l-blue-500">
-                    <div className="flex items-center gap-3 mb-3">
-                        <Calendar size={20} className="text-blue-500" />
-                        <p className="text-sm font-medium text-slate-600">Auto-Pay Enabled</p>
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-900">3</h3>
-                    <p className="text-xs text-slate-500 mt-1">Bills on autopilot</p>
-                </div>
-            </div>
-
-            {/* Auto-Parsed Bills from SMS/Email */}
-            <div className="card-swiss p-6">
-                <div className="flex items-center justify-between mb-6">
-                    <div>
-                        <h3 className="font-semibold text-slate-900">Auto-Synced Bills</h3>
-                        <p className="text-sm text-slate-500">Automatically extracted from your messages</p>
-                    </div>
-                    <button
-                        onClick={() => setShowParser(!showParser)}
-                        className="text-sm text-primary font-medium hover:underline"
-                    >
-                        {showParser ? 'Hide' : 'Show'} Parser Info
-                    </button>
-                </div>
-                <div className="space-y-4">
-                    {parsedBills.map((bill, idx) => {
-                        const SourceIcon = bill.source === 'sms' ? Smartphone : bill.source === 'email' ? Mail : MessageSquare;
-                        return (
-                            <div key={idx} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-primary/30 transition-colors group">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center group-hover:border-primary/50 transition-colors">
-                                        <SourceIcon size={20} className="text-slate-600" />
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-slate-900">{bill.merchant}</p>
-                                        <p className="text-sm text-slate-500">
-                                            {bill.category} • Due {bill.dueDate}
-                                            {bill.accountId && ` • ID: ${bill.accountId}`}
-                                        </p>
-                                        <span className="text-xs text-slate-400 capitalize">Source: {bill.source}</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <p className="text-lg font-bold text-slate-900">${bill.amount.toFixed(2)}</p>
-                                    <button className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-                                        Pay Now
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-
-                {showParser && (
-                    <div className="mt-6 p-4 rounded-xl bg-blue-50 border border-blue-100">
-                        <h4 className="font-semibold text-slate-900 mb-3">Auto-Bill Parser</h4>
-                        <p className="text-sm text-slate-600 mb-3">
-                            The auto-bill parser uses regex patterns to extract bill information from SMS/Email/WhatsApp messages.
-                            It identifies amounts, due dates, merchant names, and account IDs automatically.
-                        </p>
-                        <div className="text-xs bg-white p-3 rounded border border-blue-200 text-slate-700 space-y-1">
-                            <p><strong>Extracted Fields:</strong></p>
-                            <p>• Amount: Detects Rs., ₹, or $ followed by numbers</p>
-                            <p>• Due Date: Finds dates in DD/MM/YYYY or DD-MM-YYYY format</p>
-                            <p>• Account ID: Extracts alphanumeric IDs (8+ characters)</p>
-                            <p>• Category: Matches keywords like electricity, water, internet, etc.</p>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Upcoming Bills */}
-            <div className="card-swiss p-6">
-                <h3 className="font-semibold text-slate-900 mb-6">Upcoming Bills</h3>
-                <div className="space-y-4">
-                    {upcomingBills.map((bill, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-primary/30 transition-colors group">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center group-hover:border-primary/50 transition-colors">
-                                    <DollarSign size={20} className="text-slate-600" />
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-slate-900">{bill.name}</p>
-                                    <p className="text-sm text-slate-500">{bill.category} • Due {bill.dueDate}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <p className="text-lg font-bold text-slate-900">${bill.amount.toFixed(2)}</p>
-                                <button className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-                                    Pay Now
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Payment History */}
-            <div className="card-swiss p-6">
-                <h3 className="font-semibold text-slate-900 mb-6">Payment History</h3>
-                <div className="space-y-3">
-                    {paidBills.map((bill, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
-                            <div className="flex items-center gap-3">
-                                <CheckCircle size={18} className="text-emerald-500" />
-                                <div>
-                                    <p className="text-sm font-medium text-slate-900">{bill.name}</p>
-                                    <p className="text-xs text-slate-500">Paid on {bill.paidDate}</p>
-                                </div>
-                            </div>
-                            <p className="text-sm font-semibold text-slate-900">${bill.amount.toFixed(2)}</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+    return <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-8 pb-24 relative z-10">
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-5"><div><p className="text-xs font-bold text-white/40 uppercase tracking-[0.2em] mb-2">Payments</p><h1 className="text-3xl font-bold text-white tracking-tight">Bills & Payments</h1><p className="text-white/55 mt-2">Manage bills from your connected account activity.</p></div><button disabled className="glass-button-secondary px-5 py-3 rounded-xl font-semibold text-sm opacity-60 cursor-not-allowed"><Plus size={16} className="inline mr-2" />Add bill</button></header>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="stat-card"><CalendarClock className="text-amber-300 mb-4" size={20} /><p className="text-xs text-white/40 uppercase tracking-widest">Upcoming</p><p className="text-xl text-white font-bold mt-2">Not connected</p></div><div className="stat-card"><ReceiptText className="text-blue-300 mb-4" size={20} /><p className="text-xs text-white/40 uppercase tracking-widest">Detected activity</p><p className="text-xl text-white font-bold mt-2">{billActivity.length}</p></div><div className="stat-card"><FileText className="text-emerald-300 mb-4" size={20} /><p className="text-xs text-white/40 uppercase tracking-widest">Tracked total</p><p className="text-xl text-white font-bold mt-2">{formatMoney(total, preferences)}</p></div></div>
+        <section className="card-swiss p-6"><h2 className="text-lg font-bold text-white">Bill activity</h2><p className="text-sm text-white/45 mt-1 mb-6">Detected from transactions already available to OxFin.</p>{loading ? <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-white/50" /></div> : billActivity.length ? <div className="divide-y divide-white/10">{billActivity.map((txn) => <div key={txn.id} className="py-4 flex items-center justify-between gap-4"><div><p className="font-semibold text-white">{txn.description}</p><p className="text-xs text-white/45 mt-1">{formatDate(txn.created_at, preferences)} · {txn.type}</p></div><span className="font-semibold text-white">{formatMoney(Math.abs(Number(txn.amount)), preferences)}</span></div>)}</div> : <div className="py-12 text-center"><p className="text-white/55">No bill activity is available yet.</p><p className="text-sm text-white/35 mt-2">Connect a bank or add a bill when those integrations are enabled.</p></div>}</section>
+    </div>;
 }

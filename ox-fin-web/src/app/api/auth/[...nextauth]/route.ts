@@ -18,9 +18,11 @@ export const authOptions: NextAuthOptions = {
             async authorize(credentials) {
                 if (!credentials?.email || !credentials?.password) return null;
 
+                const email = credentials.email.trim().toLowerCase();
+
                 const result = await query(
                     'SELECT id, name, email, password_hash, two_factor_enabled, two_factor_secret, failed_login_attempts, lockout_until FROM users WHERE email = $1',
-                    [credentials.email]
+                    [email]
                 );
 
                 if (result.rows.length === 0) return null;

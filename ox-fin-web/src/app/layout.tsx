@@ -6,7 +6,7 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "OxFine - Financial Intelligence",
+  title: "OxFin - Global Financial Intelligence",
   description: "Minimalist Fintech Dashboard",
 };
 
@@ -22,7 +22,7 @@ export default function RootLayout({
           <div className="flex min-h-screen bg-background text-foreground">
             {/* Main Layout Grid */}
             <NavigationRail />
-            <main className="flex-1 pl-20 transition-all duration-300">
+            <main className="flex-1 lg:pl-64 transition-all duration-300">
               {children}
             </main>
           </div>
